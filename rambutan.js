@@ -27,6 +27,31 @@ SOFTWARE.
 // Each instance of Rambutan serves as an independent LISP interpreter
 Rambutan = function() {
 	this.namespace = new Object();
+	// Define the defining function
+	var _this = this;
+	this.namespace.defun = function() {
+		_this.namespace[this[0]] = RambutanFunction({
+			args: this[1],
+			body: this.slice(2)
+		});
+	}
+	// Define the GLOBAL variable setting function
+	// NOTE: This is not the same as set/setq in Common LISP,
+	// it acts like setf. Moreover, this is mimicking JS vars
+	this.namespace.set = function() {
+		_this.namespace[this[0]] = this[1];
+		return this[1];
+	}
+	// Define the LOCAL variable setting function
+	this.namespace.let = function() {
+		if (this.parent) {
+			this.parent.namespace[this[0]] = this[1];
+		} else {
+			_this.namespace[this[0]] = this[1];
+		}
+		return this[1];
+	}
+	// Any of these functions can be renamed via JS or interpreted LISP
 }
 
 // Evaluate (interpret) a (JavaScript) string of LISP code
@@ -48,7 +73,9 @@ Rambutan.prototype.eval = function(code) {
 		// Out of list
 		if (base_list === null) {
 			if (char !== "(") continue;
-			cur_list = base_list = new RambutanList();
+			cur_list = base_list = new RambutanList({
+				interpreter: this
+			});
 			++ p_level;
 			continue;
 		}
@@ -86,10 +113,14 @@ Rambutan.prototype.eval = function(code) {
 						cur_list.push(code.substr(atom_index, x - atom_index));
 						atom_index = -1;
 					}
+					// Evaluate
+					var result = cur_list.evaluate() || "nil";
 					if (cur_list.parent) {
 						cur_list = cur_list.parent;
+						cur_list.splice(cur_list.length - 1);
+						cur_list.push(result);
 					} else { // Base list
-						console.log(base_list);
+						// console.log(base_list);
 						base_list = null;
 					}
 				}
@@ -124,6 +155,18 @@ Rambutan.prototype.eval = function(code) {
 	}
 }
 
+// Define the JS defun function
+Rambutan.prototype.defun = function(name, args, body) {
+	if (body) { // LISP function
+		this.namespace[name] = new RambutanFunction({
+			args: args,
+			body: body || new Array()
+		});
+	} else { // JS-LISP interop
+		this.namespace[name] = args;
+	}
+}
+
 // Create the primary interpreter
 LISP = new Rambutan();
 
@@ -131,6 +174,8 @@ LISP = new Rambutan();
 RambutanList = function(json) {
 	var json = json || {};
 	this.parent = json.parent || null;
+	this.interpreter = json.interpreter || this.parent.interpreter || null;
+	this.namespace = new Object();
 	if (this.parent) this.parent.push(this);
 }
 
@@ -139,7 +184,18 @@ RambutanList.prototype = new Array();
 RambutanList.prototype.name = "";
 
 RambutanList.prototype.push = function(val) {
-	if (this.name) {
+	if (this.name === null) {
+		var l = this;
+		var f;
+		while (true) {
+			f = l.interpreter.namespace[this.name];
+			if (f) break;
+			if (!l.parent) break;
+			l = l.parent;
+		}
+		if (!f) this.name = false;
+	}
+	if (this.name || this.name === false) {
 		// Convert val to appropriate type
 		if (typeof val === 'string') {
 			if (/[+\-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)/.test(val)) val = +val;
@@ -152,9 +208,48 @@ RambutanList.prototype.push = function(val) {
 	}
 }
 
+RambutanList.prototype.evaluate = function() {
+	if (!this.name) return this;
+	var l = this;
+	var f;
+	while (true) {
+		f = l.interpreter.namespace[this.name];
+		if (f) break;
+		if (!l.parent) return this;
+		l = l.parent;
+	}
+	if (typeof f === 'function') {
+		return f.call(this);
+	} else if (f instanceof RambutanFunction) {
+		return f.evaluate(this);
+	} else {
+		return f;
+	}
+}
+
+RambutanList.prototype.toString = function() {
+	return "(" + (this.name ? this.name + " " : "") +
+		this.join(" ") + ")";
+}
+
 // Stores unevaluated LISP code
 RambutanQuote = function(str) {
 	this.value = str;
+}
+
+RambutanQuote.prototype.toString = function() {
+	return "'" + this.value;
+}
+
+// Stores LISP function
+RambutanFunction = function(json) {
+	var json = json || new Object();
+	this.args = json.args || [];
+	this.body = json.body || [];
+}
+
+RambutanFunction.prototype.toString = function() {
+	return "function";
 }
 
 window.addEventListener("load", function() {
