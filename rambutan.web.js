@@ -34,8 +34,18 @@ LISP.defun("log", function() {
 
 LISP.defun("+", function() {
 	var sum = 0;
-	for (var x = 0, y = this.length; x < y; ++ x) {
-		sum += this[x];
+	for (var i = this.length; i --; ) {
+		var val = +this[i];
+		if (val !== val) continue;
+		sum += val;
 	}
 	return sum;
+});
+
+LISP.defun(".", function() {
+	var str = '"';
+	for (var x = 0, y = this.length; x < y; ++ x) {
+		str += this[x];
+	}
+	return str + '"';
 });

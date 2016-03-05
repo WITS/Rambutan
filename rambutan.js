@@ -39,15 +39,15 @@ Rambutan = function() {
 	// NOTE: This is not the same as set/setq in Common LISP,
 	// it acts like setf. Moreover, this is mimicking JS vars
 	this.namespace.set = function() {
-		_this.namespace[this[0]] = this[1];
+		_this.namespace[this[0].name] = this[1];
 		return this[1];
 	}
 	// Define the LOCAL variable setting function
 	this.namespace.let = function() {
 		if (this.parent) {
-			this.parent.namespace[this[0]] = this[1];
+			this.parent.namespace[this[0].name] = this[1];
 		} else {
-			_this.namespace[this[0]] = this[1];
+			_this.namespace[this[0].name] = this[1];
 		}
 		return this[1];
 	}
@@ -59,9 +59,7 @@ Rambutan.prototype.eval = function(code) {
 	for (var x = 0, // The index of the current character
 		y = code.length, // The length of this string of code
 		base_list = null, // The first-level list
-		// list_index = -1, // The index of the current list
 		cur_list = null, // The list that this atom is inside of
-		apostrophe = -1, // The p_level of the apostrophe
 		quote = false, // Are we inside of a string?
 		atom_index = -1, // The index of the current atom (or list)
 		atom = null, // The current atom object / primitive
@@ -74,7 +72,8 @@ Rambutan.prototype.eval = function(code) {
 		if (base_list === null) {
 			if (char !== "(") continue;
 			cur_list = base_list = new RambutanList({
-				interpreter: this
+				interpreter: this,
+				apostrophe: (x && code[x - 1] === "'")
 			});
 			++ p_level;
 			continue;
@@ -82,10 +81,10 @@ Rambutan.prototype.eval = function(code) {
 
 		// Quotes
 		if (quote && char !== '"') continue;
-		if (quote && char === '"' && code[x-1] === "\\") continue;
+		if (quote && char === '"' && code[x - 1] === "\\") continue;
 		if (quote) {
 			quote = false;
-			cur_list.push(code.substr(atom_index + 1, x - atom_index - 1));
+			cur_list.push(code.substr(atom_index, x - atom_index + 1));
 			atom_index = -1;
 			continue;
 		}
@@ -94,49 +93,36 @@ Rambutan.prototype.eval = function(code) {
 			// Into the next dream layer
 			if (char === "(") {
 				if (code[x - 1] === "'") {
-					apostrophe = p_level;
-					atom_index = x;
+					atom_index = -1;
 				}
-				if (apostrophe === -1) {
-					cur_list = new RambutanList({
-						parent: cur_list
-					});
-				}
+				cur_list = new RambutanList({
+					parent: cur_list,
+					apostrophe: code[x - 1] === "'"
+				});
 				++ p_level;
 				continue;
 			}
 
 			// Out of that dream layer
 			if (char === ")") {
-				if (apostrophe === -1) {
-					if (atom_index !== -1) {
-						cur_list.push(code.substr(atom_index, x - atom_index));
-						atom_index = -1;
-					}
-					// Evaluate
-					var result = cur_list.evaluate() || "nil";
-					if (cur_list.parent) {
-						cur_list = cur_list.parent;
-						cur_list.splice(cur_list.length - 1);
-						cur_list.push(result);
-					} else { // Base list
-						// console.log(base_list);
-						base_list = null;
-					}
-				}
-				-- p_level;
-				if (apostrophe !== -1 && p_level === apostrophe) {
-					apostrophe = -1;
-					cur_list.push(new RambutanQuote(
-						code.substr(atom_index, x - atom_index + 1)));
+				if (atom_index !== -1) {
+					cur_list.push(code.substr(atom_index, x - atom_index));
 					atom_index = -1;
 				}
+				// Evaluate
+				var result = cur_list.evaluate() || "nil";
+				if (cur_list.parent) {
+					cur_list = cur_list.parent;
+					cur_list.splice(cur_list.length - 1);
+					cur_list.push(result);
+				} else { // Base list
+					// console.log(base_list);
+					base_list = null;
+				}
+				-- p_level;
 				continue;
 			}
 		}
-
-		// Apostrophe
-		if (apostrophe !== -1) continue;
 
 		// Null space
 		if (atom_index === -1) {
@@ -176,31 +162,56 @@ RambutanList = function(json) {
 	this.parent = json.parent || null;
 	this.interpreter = json.interpreter || this.parent.interpreter || null;
 	this.namespace = new Object();
+	if (json.apostrophe) this.apostrophe = true;
 	if (this.parent) this.parent.push(this);
 }
 
 RambutanList.prototype = new Array();
 
 RambutanList.prototype.name = "";
+RambutanList.prototype.apostrophe = false;
+RambutanList.prototype.backtick = false;
+RambutanList.prototype.comma = false;
 
 RambutanList.prototype.push = function(val) {
 	if (this.name === null) {
 		var l = this;
 		var f;
 		while (true) {
-			f = l.interpreter.namespace[this.name];
+			f = l.namespace[this.name];
 			if (f) break;
 			if (!l.parent) break;
 			l = l.parent;
 		}
+		if (!f) f = this.interpreter.namespace[this.name];
 		if (!f) this.name = false;
 	}
 	if (this.name || this.name === false) {
 		// Convert val to appropriate type
 		if (typeof val === 'string') {
-			if (/[+\-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)/.test(val)) val = +val;
-			if (val === 't') val = true;
-			if (val === 'nil') val = null;
+			// String
+			if (val.length >= 2 && val[0] === '"' &&
+				val[val.length - 1] === '"') {
+				val = val.substr(1, val.length - 2);
+			} else {
+				// Number (Doubles only [for now])
+				var pval = +val;
+				if (val.length && pval === pval) val = pval;
+				// True
+				if (val === 't') val = true;
+				// Nil
+				if (val === 'nil') val = null;
+				// Single-atom list
+				if (typeof val === 'string') {
+					var l = new RambutanList({
+						parent: this
+					});
+					l.name = val;
+					// console.log(l);
+					// val = l;
+					return;
+				}
+			}
 		}
 		Array.prototype.push.call(this, val);
 	} else {
@@ -209,15 +220,17 @@ RambutanList.prototype.push = function(val) {
 }
 
 RambutanList.prototype.evaluate = function() {
+	if (!this.name && !this.length) return null;
 	if (!this.name) return this;
-	var l = this;
 	var f;
-	while (true) {
-		f = l.interpreter.namespace[this.name];
-		if (f) break;
-		if (!l.parent) return this;
-		l = l.parent;
+	// Check the local namespace(s)
+	for (var l = this; true; l = l.parent) {
+		if (!f) f = l.namespace[this.name];
+		if (l.apostrophe) return this;
+		if (!l.parent) break;
 	}
+	// Check the global namespace, if appropriate
+	if (!f) f = this.interpreter.namespace[this.name];
 	if (typeof f === 'function') {
 		return f.call(this);
 	} else if (f instanceof RambutanFunction) {
@@ -228,17 +241,12 @@ RambutanList.prototype.evaluate = function() {
 }
 
 RambutanList.prototype.toString = function() {
-	return "(" + (this.name ? this.name + " " : "") +
-		this.join(" ") + ")";
-}
-
-// Stores unevaluated LISP code
-RambutanQuote = function(str) {
-	this.value = str;
-}
-
-RambutanQuote.prototype.toString = function() {
-	return "'" + this.value;
+	var temp = new Array();
+	for (var i = this.length; i --; ) {
+		temp[i] = typeof this[i] === 'string' ? '"' + this[i] + '"' : this[i].toString();
+	}
+	return (this.apostrophe ? "'" : "") + "(" + this.name +
+		(this.name && this.length ? " " : "") + temp.join(" ") + ")";
 }
 
 // Stores LISP function
