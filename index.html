@@ -10,7 +10,7 @@
 (log (+ 1 2))
 (log (set x 12))
 (log (set y (. 4 8)))
-(log t nil '(log "Whoa." "Recursive?") x)
+(log t nil '(log "Whoa." "Recursive?") (let ((x 20)) (+ x x)))
 </script>
 </head>
 <body>

@@ -25,8 +25,8 @@ SOFTWARE.
 */
 
 LISP.defun("log", function() {
-	for (var x = 0, y = this.length; x < y; ++ x) {
-		var v = this[x];
+	for (var x = 0, y = arguments.length; x < y; ++ x) {
+		var v = arguments[x];
 		console.log(v && typeof v === 'object' ? v.toString() : v);
 	}
 	return "nil";
@@ -34,8 +34,8 @@ LISP.defun("log", function() {
 
 LISP.defun("+", function() {
 	var sum = 0;
-	for (var i = this.length; i --; ) {
-		var val = +this[i];
+	for (var i = arguments.length; i --; ) {
+		var val = +arguments[i];
 		if (val !== val) continue;
 		sum += val;
 	}
@@ -44,8 +44,8 @@ LISP.defun("+", function() {
 
 LISP.defun(".", function() {
 	var str = '"';
-	for (var x = 0, y = this.length; x < y; ++ x) {
-		str += this[x];
+	for (var x = 0, y = arguments.length; x < y; ++ x) {
+		str += arguments[x];
 	}
 	return str + '"';
 });

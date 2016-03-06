@@ -39,17 +39,14 @@ Rambutan = function() {
 	// NOTE: This is not the same as set/setq in Common LISP,
 	// it acts like setf. Moreover, this is mimicking JS vars
 	this.namespace.set = function() {
-		_this.namespace[this[0].name] = this[1];
-		return this[1];
+
+		_this.namespace[arguments[0].symbol] = arguments[1];
+		return arguments[1];
 	}
 	// Define the LOCAL variable setting function
 	this.namespace.let = function() {
-		if (this.parent) {
-			this.parent.namespace[this[0].name] = this[1];
-		} else {
-			_this.namespace[this[0].name] = this[1];
-		}
-		return this[1];
+		this.namespace[arguments[0].symbol] = arguments[1];
+		return arguments[1];
 	}
 	// Any of these functions can be renamed via JS or interpreted LISP
 }
@@ -116,7 +113,7 @@ Rambutan.prototype.eval = function(code) {
 					cur_list.splice(cur_list.length - 1);
 					cur_list.push(result);
 				} else { // Base list
-					// console.log(base_list);
+					console.log(base_list);
 					base_list = null;
 				}
 				-- p_level;
@@ -168,71 +165,49 @@ RambutanList = function(json) {
 
 RambutanList.prototype = new Array();
 
-RambutanList.prototype.name = "";
 RambutanList.prototype.apostrophe = false;
 RambutanList.prototype.backtick = false;
 RambutanList.prototype.comma = false;
 
 RambutanList.prototype.push = function(val) {
-	if (this.name === null) {
-		var l = this;
-		var f;
-		while (true) {
-			f = l.namespace[this.name];
-			if (f) break;
-			if (!l.parent) break;
-			l = l.parent;
-		}
-		if (!f) f = this.interpreter.namespace[this.name];
-		if (!f) this.name = false;
-	}
-	if (this.name || this.name === false) {
-		// Convert val to appropriate type
-		if (typeof val === 'string') {
-			// String
-			if (val.length >= 2 && val[0] === '"' &&
-				val[val.length - 1] === '"') {
-				val = val.substr(1, val.length - 2);
-			} else {
-				// Number (Doubles only [for now])
-				var pval = +val;
-				if (val.length && pval === pval) val = pval;
-				// True
-				if (val === 't') val = true;
-				// Nil
-				if (val === 'nil') val = null;
-				// Single-atom list
-				if (typeof val === 'string') {
-					var l = new RambutanList({
-						parent: this
-					});
-					l.name = val;
-					// console.log(l);
-					// val = l;
-					return;
-				}
+	// Convert val to appropriate type
+	if (typeof val === 'string') {
+		// String
+		if (val.length >= 2 && val[0] === '"' &&
+			val[val.length - 1] === '"') {
+			val = val.substr(1, val.length - 2);
+		} else {
+			// Number (Doubles only [for now])
+			var pval = +val;
+			if (val.length && pval === pval) val = pval;
+			// True
+			if (val === 't') val = true;
+			// Nil
+			if (val === 'nil') val = null;
+			// Single-atom list
+			if (typeof val === 'string') {
+				val = new RambutanAtom(val);
 			}
 		}
-		Array.prototype.push.call(this, val);
-	} else {
-		this.name = val;
 	}
+	Array.prototype.push.call(this, val);
 }
 
 RambutanList.prototype.evaluate = function() {
-	if (!this.name && !this.length) return null;
-	if (!this.name) return this;
+	if (!this.length) return null;
 	var f;
+	var a = this[0];
+	if (!(a instanceof RambutanAtom)) return this;
 	// Check the local namespace(s)
 	for (var l = this; true; l = l.parent) {
-		if (!f) f = l.namespace[this.name];
+		if (!f) f = l.namespace[a];
 		if (l.apostrophe) return this;
 		if (!l.parent) break;
 	}
 	// Check the global namespace, if appropriate
-	if (!f) f = this.interpreter.namespace[this.name];
+	if (!f) f = this.interpreter.namespace[a];
 	if (typeof f === 'function') {
-		return f.call(this);
+		return f.apply(this, this.slice(1));
 	} else if (f instanceof RambutanFunction) {
 		return f.evaluate(this);
 	} else {
@@ -245,8 +220,18 @@ RambutanList.prototype.toString = function() {
 	for (var i = this.length; i --; ) {
 		temp[i] = typeof this[i] === 'string' ? '"' + this[i] + '"' : this[i].toString();
 	}
-	return (this.apostrophe ? "'" : "") + "(" + this.name +
-		(this.name && this.length ? " " : "") + temp.join(" ") + ")";
+	return (this.apostrophe ? "'" : "") + "(" + temp.join(" ") + ")";
+}
+
+// Stores LISP atom (to avoid confusion with strings)
+RambutanAtom = function(symbol) {
+	this.symbol = symbol || "";
+}
+
+RambutanAtom.prototype.symbol = "";
+
+RambutanAtom.prototype.toString = function() {
+	return this.symbol;
 }
 
 // Stores LISP function
