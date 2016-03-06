@@ -43,9 +43,9 @@ LISP.defun("+", function() {
 });
 
 LISP.defun(".", function() {
-	var str = '"';
+	var str = "";
 	for (var x = 0, y = arguments.length; x < y; ++ x) {
 		str += arguments[x];
 	}
-	return str + '"';
+	return str;
 });

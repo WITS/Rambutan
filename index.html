@@ -6,11 +6,11 @@
 <script src='rambutan.web.js'></script>
 <script type='text/lisp'>
 (log "Testing...")
-(log "testing...")
-(log (+ 1 2))
-(log (set x 12))
-(log (set y (. 4 8)))
-(log t nil '(log "Whoa." "Recursive?") (let ((x 20)) (+ x x)))
+(set x 12)
+(set y (. 4 8))
+(log (. "x = " x ", y = " y))
+(log t nil '(log "Whoa." "Recursive?"))
+(log (let ((x 20)) (+ x x)))
 </script>
 </head>
 <body>

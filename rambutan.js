@@ -39,14 +39,38 @@ Rambutan = function() {
 	// NOTE: This is not the same as set/setq in Common LISP,
 	// it acts like setf. Moreover, this is mimicking JS vars
 	this.namespace.set = function() {
-
-		_this.namespace[arguments[0].symbol] = arguments[1];
-		return arguments[1];
+		var result = arguments[1];
+		if (arguments[1] instanceof RambutanList) { 
+			result = arguments[1].delayedEvaluate();
+		}
+		_this.namespace[arguments[0].symbol] = result;
+		return result;
 	}
 	// Define the LOCAL variable setting function
 	this.namespace.let = function() {
-		this.namespace[arguments[0].symbol] = arguments[1];
-		return arguments[1];
+		// Set temporary variables
+		for (var i = arguments[0].length; i --; ) {
+			var pair = arguments[0][i];
+			if (pair instanceof RambutanList) { // Pair
+				this.namespace[pair[0].symbol] = pair[1];
+			} else { // Symbol
+				this.namespace[pair[0].symbol] = null;
+			}
+		}
+		// Execute the body
+		var result = null;
+		for (var x = 1, y = arguments.length; x < y; ++ x) {
+			var arg = arguments[x];
+			// TODO: Make delayedEvaluate work with RambutanAtom
+			if (!(arg instanceof RambutanList)) { 
+				result = arg;
+				continue;
+			}
+			result = arg.delayedEvaluate();
+		}
+		// Clear the namespace and return the value of the last line
+		this.namespace = new Object();
+		return result;
 	}
 	// Any of these functions can be renamed via JS or interpreted LISP
 }
@@ -82,6 +106,7 @@ Rambutan.prototype.eval = function(code) {
 		if (quote) {
 			quote = false;
 			cur_list.push(code.substr(atom_index, x - atom_index + 1));
+			// console.log("Taking slice: " + code.substr(atom_index, x - atom_index + 1));
 			atom_index = -1;
 			continue;
 		}
@@ -104,6 +129,8 @@ Rambutan.prototype.eval = function(code) {
 			if (char === ")") {
 				if (atom_index !== -1) {
 					cur_list.push(code.substr(atom_index, x - atom_index));
+					var a = cur_list[cur_list.length - 1];
+					if (a instanceof RambutanAtom) cur_list[cur_list.length - 1] = a.evaluate();
 					atom_index = -1;
 				}
 				// Evaluate
@@ -113,7 +140,7 @@ Rambutan.prototype.eval = function(code) {
 					cur_list.splice(cur_list.length - 1);
 					cur_list.push(result);
 				} else { // Base list
-					console.log(base_list);
+					// console.log(base_list);
 					base_list = null;
 				}
 				-- p_level;
@@ -123,7 +150,7 @@ Rambutan.prototype.eval = function(code) {
 
 		// Null space
 		if (atom_index === -1) {
-			if (cur_list.name && char === '"') {
+			if (char === '"') {
 				quote = true;
 				atom_index = x;
 			} else if (charCode >= 33 && charCode <= 126) {
@@ -132,6 +159,8 @@ Rambutan.prototype.eval = function(code) {
 			continue;
 		} else if (charCode < 33 || charCode > 126) {
 			cur_list.push(code.substr(atom_index, x - atom_index));
+			var a = cur_list[cur_list.length - 1];
+			if (a instanceof RambutanAtom) cur_list[cur_list.length - 1] = a.evaluate();
 			atom_index = -1;
 			continue;
 		}
@@ -168,6 +197,7 @@ RambutanList.prototype = new Array();
 RambutanList.prototype.apostrophe = false;
 RambutanList.prototype.backtick = false;
 RambutanList.prototype.comma = false;
+RambutanList.prototype.delayedEvaluation = false;
 
 RambutanList.prototype.push = function(val) {
 	// Convert val to appropriate type
@@ -184,9 +214,22 @@ RambutanList.prototype.push = function(val) {
 			if (val === 't') val = true;
 			// Nil
 			if (val === 'nil') val = null;
-			// Single-atom list
+			// Atom
 			if (typeof val === 'string') {
-				val = new RambutanAtom(val);
+				var apostrophe = false;
+				if (val.length >= 2 && val[0] === "'") {
+					apostrophe = true;
+					val = val.substr(1);
+				}
+				val = new RambutanAtom({
+					symbol: val,
+					parent: this,
+					apostrophe: apostrophe
+				});
+				// Make sure certain special functions are evaluated properly
+				if (!this.length && ["let", "set"].indexOf(val.symbol) !== -1) {
+					this.delayedEvaluation = true;
+				}
 			}
 		}
 	}
@@ -200,18 +243,65 @@ RambutanList.prototype.evaluate = function() {
 	if (!(a instanceof RambutanAtom)) return this;
 	// Check the local namespace(s)
 	for (var l = this; true; l = l.parent) {
-		if (!f) f = l.namespace[a];
+		if (f === undefined) f = l.namespace[a];
 		if (l.apostrophe) return this;
+		if (l.delayedEvaluation && l !== this) return this;
 		if (!l.parent) break;
 	}
 	// Check the global namespace, if appropriate
 	if (!f) f = this.interpreter.namespace[a];
-	if (typeof f === 'function') {
+	if (typeof f === 'function') { // JS-Interop Function
 		return f.apply(this, this.slice(1));
-	} else if (f instanceof RambutanFunction) {
+	} else if (f instanceof RambutanFunction) { // LISP Function
 		return f.evaluate(this);
-	} else {
-		return f;
+	} else { // Variable
+		if (f !== undefined && this.length === 1) { // Definitely a variable
+			return f;
+		} else { // Pair/list
+			return this;
+		}
+	}
+}
+
+RambutanList.prototype.delayedEvaluate = function() {
+	if (!this.length) return null;
+	var temp = new RambutanList({
+		interpreter: this.interpreter
+	});
+	temp.parent = this.parent;
+	var f;
+	var delayedEvaluation = this.parent.delayedEvaluation;
+	this.parent.delayedEvaluation = false;
+	// Evaluate children first
+	for (var x = 0, y = this.length; x < y; ++ x) {
+		if (!this[x] || typeof this[x] !== 'object') {
+			temp.push(this[x]);
+			continue;
+		}
+		temp.push(this[x].evaluate());
+	}
+	this.parent.delayedEvaluation = delayedEvaluation;
+	// Evaluate ya'self
+	var a = temp[0];
+	if (!(a instanceof RambutanAtom)) return temp;
+	// Check the local namespace(s)
+	for (var l = temp; true; l = l.parent) {
+		if (f === undefined) f = l.namespace[a];
+		// if (l.apostrophe) return temp;
+		if (!l.parent) break;
+	}
+	// Check the global namespace, if appropriate
+	if (!f) f = temp.interpreter.namespace[a];
+	if (typeof f === 'function') { // JS-Interop Function
+		return f.apply(temp, temp.slice(1));
+	} else if (f instanceof RambutanFunction) { // LISP Function
+		return f.evaluate(temp);
+	} else { // Variable
+		if (f !== undefined && temp.length === 1) { // Definitely a variable
+			return f;
+		} else { // Primitive / Pair / List
+			return temp;
+		}
 	}
 }
 
@@ -224,11 +314,47 @@ RambutanList.prototype.toString = function() {
 }
 
 // Stores LISP atom (to avoid confusion with strings)
-RambutanAtom = function(symbol) {
-	this.symbol = symbol || "";
+RambutanAtom = function(json) {
+	var json = json || new Object();
+	this.symbol = json.symbol || "";
+	this.parent = json.parent || null;
+	this.interpreter = json.interpreter || this.parent.interpreter || null;
+	if (json.apostrophe) this.apostrophe = json.apostrophe;
+	if (json.backtick) this.backtick = json.backtick;
+	if (json.comma) this.comma = json.comma;
 }
 
 RambutanAtom.prototype.symbol = "";
+RambutanAtom.prototype.apostrophe = false;
+RambutanAtom.prototype.backtick = false;
+RambutanAtom.prototype.comma = false;
+
+RambutanAtom.prototype.evaluate = function() {
+	// If this is actually the name of a function, return self
+	if (this.parent && this.parent[0] == this) return this;
+	// Check the local namespace(s)
+	var f;
+	for (var l = this; true; l = l.parent) {
+		if (f === undefined && l.namespace) f = l.namespace[this.symbol];
+		if (l.apostrophe) return this;
+		if (l.delayedEvaluation && l !== this) return this;
+		if (!l.parent) break;
+	}
+	// console.log(f);
+	// Check the global namespace, if appropriate
+	if (f === undefined) f = this.interpreter.namespace[this.symbol];
+	if (typeof f === 'function') { // JS-Interop Function
+		return f.apply(this);
+	} else if (f instanceof RambutanFunction) { // LISP Function
+		return f.evaluate(this);
+	} else { // Variable
+		if (f !== undefined) { // Definitely a variable
+			return f;
+		} else { // Me!
+			return this;
+		}
+	}
+}
 
 RambutanAtom.prototype.toString = function() {
 	return this.symbol;
