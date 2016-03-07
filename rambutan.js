@@ -396,7 +396,16 @@ var scriptsObserver = new MutationObserver(function(mutations) {
 			// console.log(node);
 			if (!/\.lisp$/i.test(node.src)) continue;
 			node.type = "text/lisp";
-			
+			httpRequest = new XMLHttpRequest();
+			httpRequest.addEventListener("readystatechange", function(event) {
+				// Evaluate the code if/when successful
+				if (httpRequest.readyState === XMLHttpRequest.DONE) {
+					LISP.eval(httpRequest.responseText);
+				}
+			});
+			httpRequest.open("GET", node.src, true);
+			httpRequest.send(null);
+			node.setAttribute("data-rambutan-handled", true);
 		}
 	}
 });
@@ -409,6 +418,7 @@ document.addEventListener("DOMContentLoaded", function() {
 	// Load the scripts in the primary interpreter
 	for (var x = 0, y = scripts.length; x < y; ++ x) {
 		var s = scripts[x];
+		if (s.getAttribute("data-rambutan-handled")) continue;
 		var src = s.getAttribute("src");
 		if (src) { // Attempt to load source via AJAX
 			httpRequest = new XMLHttpRequest();
@@ -420,6 +430,7 @@ document.addEventListener("DOMContentLoaded", function() {
 			});
 			httpRequest.open("GET", src, true);
 			httpRequest.send(null);
+			s.setAttribute("data-rambutan-handled", true);
 		} else { // Interpet the inline text
 			LISP.eval(s.text);
 		}
