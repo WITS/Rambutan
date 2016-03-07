@@ -48,7 +48,7 @@ LISP.defun("if", function() {
 	return null;
 }, true);
 
-// Conditional operators
+// Logical operators
 LISP.defun("and", function() {
 	for (var x = 0, y = arguments.length; x < y; ++ x) {
 		if (!arguments[x]) return false;
@@ -65,6 +65,51 @@ LISP.defun("or", function() {
 
 LISP.defun("not", function() {
 	return !arguments[0];
+});
+
+// Equality/inequality operators
+// TODO: Ensure that RambutanLists and RambutanAtoms
+// are compared correctly
+LISP.defun("=", function() {
+	for (var x = 1, y = arguments.length; x < y; ++ x) {
+		if (arguments[x - 1] != arguments[x]) return false;
+	}
+	return true;
+});
+
+LISP.defun("!=", function() {
+	for (var x = 1, y = arguments.length; x < y; ++ x) {
+		if (arguments[x - 1] == arguments[x]) return false;
+	}
+	return true;
+});
+
+LISP.defun("<", function() {
+	for (var x = 1, y = arguments.length; x < y; ++ x) {
+		if (arguments[x - 1] >= arguments[x]) return false;
+	}
+	return true;
+});
+
+LISP.defun("<=", function() {
+	for (var x = 1, y = arguments.length; x < y; ++ x) {
+		if (arguments[x - 1] > arguments[x]) return false;
+	}
+	return true;
+});
+
+LISP.defun(">", function() {
+	for (var x = 1, y = arguments.length; x < y; ++ x) {
+		if (arguments[x - 1] <= arguments[x]) return false;
+	}
+	return true;
+});
+
+LISP.defun(">=", function() {
+	for (var x = 1, y = arguments.length; x < y; ++ x) {
+		if (arguments[x - 1] < arguments[x]) return false;
+	}
+	return true;
 });
 
 // Arithmetic operators

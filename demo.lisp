@@ -1,8 +1,8 @@
-(let ((x 3) (y 4))
+(let ((x 5) (y 4) (z 3))
 	(log
-		"Hello world"			; Always a good start
-		(. "(" x ", " y ")")	; 2d coordinates
-		(- x y)					; subtraction
-		(if (and x y)			; conditional test
+		"Hello world"						; Always a good start
+		(. "(" x ", " y ", " z ")")	; 3d coordinates
+		(- x y)								; subtraction
+		(if (> x y z)						; conditional test
 			"True"
 			"False")))
