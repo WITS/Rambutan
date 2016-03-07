@@ -27,6 +27,7 @@ SOFTWARE.
 // Each instance of Rambutan serves as an independent LISP interpreter
 Rambutan = function() {
 	this.namespace = new Object();
+	this.delayed = ["let", "set"];
 	// Define the defining function
 	var _this = this;
 	this.namespace.defun = function() {
@@ -83,12 +84,24 @@ Rambutan.prototype.eval = function(code) {
 		base_list = null, // The first-level list
 		cur_list = null, // The list that this atom is inside of
 		quote = false, // Are we inside of a string?
+		comment = false, // Are we inside a comment?
 		atom_index = -1, // The index of the current atom (or list)
 		atom = null, // The current atom object / primitive
 		p_level = 0 // Parentheses level
 		; x < y; ++ x) {
 		var char = code[x];
 		var charCode = code.charCodeAt(x);
+
+		// Comments
+		if (comment && char !== '\n') continue;
+		if (comment) {
+			comment = false;
+			continue;
+		}
+		if (!quote && char === ';') {
+			comment = true;
+			continue;
+		}
 
 		// Out of list
 		if (base_list === null) {
@@ -169,15 +182,10 @@ Rambutan.prototype.eval = function(code) {
 }
 
 // Define the JS defun function
-Rambutan.prototype.defun = function(name, args, body) {
-	if (body) { // LISP function
-		this.namespace[name] = new RambutanFunction({
-			args: args,
-			body: body || new Array()
-		});
-	} else { // JS-LISP interop
-		this.namespace[name] = args;
-	}
+Rambutan.prototype.defun = function(name, callback, delayed) {
+	this.namespace[name] = callback;
+	if (delayed) this.delayed.push(name);
+	// POTENTIAL PROBLEM: re-defining a delayed function with a non-delayed function
 }
 
 // Create the primary interpreter
@@ -228,7 +236,7 @@ RambutanList.prototype.push = function(val) {
 					apostrophe: apostrophe
 				});
 				// Make sure certain special functions are evaluated properly
-				if (!this.length && ["let", "set"].indexOf(val.symbol) !== -1) {
+				if (!this.length && this.interpreter.delayed.indexOf(val.symbol) !== -1) {
 					this.delayedEvaluation = true;
 				}
 			}
@@ -241,6 +249,7 @@ RambutanList.prototype.evaluate = function() {
 	if (!this.length) return null;
 	var f;
 	var a = this[0];
+	if (this.length === 1 && (a === null || typeof a !== 'object')) return a;
 	if (!(a instanceof RambutanAtom)) return this;
 	// Evaluate children first
 	var temp = new RambutanList({
@@ -270,7 +279,9 @@ RambutanList.prototype.evaluate = function() {
 	} else { // Variable
 		if (f !== undefined && temp.length === 1) { // Definitely a variable
 			return f;
-		} else { // Pair/list
+		} else if (temp.length === 1) { // Primitive
+			return temp[0];
+		} else { // Pair / List
 			return temp;
 		}
 	}
@@ -296,6 +307,7 @@ RambutanList.prototype.delayedEvaluate = function() {
 	this.parent.delayedEvaluation = delayedEvaluation;
 	// Evaluate ya'self
 	var a = temp[0];
+	if (this.length === 1 && (a === null || typeof a !== 'object')) return a;
 	if (!(a instanceof RambutanAtom)) return temp;
 	// Check the local namespace(s)
 	for (var l = temp; true; l = l.parent) {
@@ -312,7 +324,9 @@ RambutanList.prototype.delayedEvaluate = function() {
 	} else { // Variable
 		if (f !== undefined && temp.length === 1) { // Definitely a variable
 			return f;
-		} else { // Primitive / Pair / List
+		} else if (temp.length === 1) { // Primitive
+			return temp[0];
+		} else { // Pair / List
 			return temp;
 		}
 	}
@@ -363,8 +377,8 @@ RambutanAtom.prototype.evaluate = function() {
 	} else { // Variable
 		if (f !== undefined) { // Definitely a variable
 			return f;
-		} else { // Me!
-			return this;
+		} else { // I don't exist...
+			return null;
 		}
 	}
 }
