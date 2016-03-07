@@ -394,7 +394,13 @@ var scriptsObserver = new MutationObserver(function(mutations) {
 			var node = nodes[j];
 			if (node.tagName !== "SCRIPT") continue;
 			// console.log(node);
-			if (!/\.lisp$/i.test(node.src)) continue;
+			if (!/\.lisp$/i.test(node.src)) {
+				if (node.type == "text/lisp") {
+					node.setAttribute("data-rambutan-handled", true);
+					LISP.eval(node.text);
+				}
+				continue;
+			}
 			node.type = "text/lisp";
 			httpRequest = new XMLHttpRequest();
 			httpRequest.addEventListener("readystatechange", function(event) {
