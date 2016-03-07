@@ -61,6 +61,7 @@ Rambutan = function() {
 		var result = null;
 		for (var x = 1, y = arguments.length; x < y; ++ x) {
 			var arg = arguments[x];
+			arg.parent = this;
 			// TODO: Make delayedEvaluate work with RambutanAtom
 			if (!(arg instanceof RambutanList)) { 
 				result = arg;
@@ -241,6 +242,18 @@ RambutanList.prototype.evaluate = function() {
 	var f;
 	var a = this[0];
 	if (!(a instanceof RambutanAtom)) return this;
+	// Evaluate children first
+	var temp = new RambutanList({
+		interpreter: this.interpreter
+	});
+	temp.parent = this.parent;
+	for (var x = 0, y = this.length; x < y; ++ x) {
+		if (!this[x] || typeof this[x] !== 'object') {
+			temp.push(this[x]);
+			continue;
+		}
+		temp.push(this[x].evaluate());
+	}
 	// Check the local namespace(s)
 	for (var l = this; true; l = l.parent) {
 		if (f === undefined) f = l.namespace[a];
@@ -251,14 +264,14 @@ RambutanList.prototype.evaluate = function() {
 	// Check the global namespace, if appropriate
 	if (!f) f = this.interpreter.namespace[a];
 	if (typeof f === 'function') { // JS-Interop Function
-		return f.apply(this, this.slice(1));
+		return f.apply(temp, temp.slice(1));
 	} else if (f instanceof RambutanFunction) { // LISP Function
-		return f.evaluate(this);
+		return f.evaluate(temp);
 	} else { // Variable
-		if (f !== undefined && this.length === 1) { // Definitely a variable
+		if (f !== undefined && temp.length === 1) { // Definitely a variable
 			return f;
 		} else { // Pair/list
-			return this;
+			return temp;
 		}
 	}
 }
@@ -371,7 +384,25 @@ RambutanFunction.prototype.toString = function() {
 	return "function";
 }
 
-window.addEventListener("load", function() {
+// TEMP
+// console.log(document.currentScript);
+var scriptsObserver = new MutationObserver(function(mutations) {
+	// console.log(mutations);
+	for (var i = mutations.length; i --; ) {
+		var nodes = mutations[i].addedNodes;
+		for (var j = nodes.length; j --; ) {
+			var node = nodes[j];
+			if (node.tagName !== "SCRIPT") continue;
+			// console.log(node);
+			if (!/\.lisp$/i.test(node.src)) continue;
+			node.type = "text/lisp";
+			
+		}
+	}
+});
+scriptsObserver.observe(document.head, { childList: true });
+
+document.addEventListener("DOMContentLoaded", function() {
 	// Find all LISP script tags
 	var scripts = document.querySelectorAll("script[type='text/lisp']," +
 		"script[src$='.lisp']");
@@ -380,7 +411,15 @@ window.addEventListener("load", function() {
 		var s = scripts[x];
 		var src = s.getAttribute("src");
 		if (src) { // Attempt to load source via AJAX
-			// TODO
+			httpRequest = new XMLHttpRequest();
+			httpRequest.addEventListener("readystatechange", function(event) {
+				// Evaluate the code if/when successful
+				if (httpRequest.readyState === XMLHttpRequest.DONE) {
+					LISP.eval(httpRequest.responseText);
+				}
+			});
+			httpRequest.open("GET", src, true);
+			httpRequest.send(null);
 		} else { // Interpet the inline text
 			LISP.eval(s.text);
 		}

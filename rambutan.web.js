@@ -25,11 +25,13 @@ SOFTWARE.
 */
 
 LISP.defun("log", function() {
+	var v_str = null;
 	for (var x = 0, y = arguments.length; x < y; ++ x) {
 		var v = arguments[x];
-		console.log(v && typeof v === 'object' ? v.toString() : v);
+		var v_str = v && typeof v === 'object' ? v.toString() : v;
+		console.log(v_str);
 	}
-	return "nil";
+	return v_str;
 });
 
 LISP.defun("+", function() {
