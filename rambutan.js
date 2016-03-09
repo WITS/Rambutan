@@ -142,9 +142,7 @@ Rambutan.prototype.eval = function(code) {
 		if (!quote) {
 			// Into the next dream layer
 			if (char === "(") {
-				if (code[x - 1] === "'") {
-					atom_index = -1;
-				}
+				atom_index = -1;
 				cur_list = new RambutanList({
 					parent: cur_list,
 					apostrophe: code[x - 1] === "'",
@@ -164,11 +162,11 @@ Rambutan.prototype.eval = function(code) {
 					atom_index = -1;
 				}
 				// Evaluate
-				var result = cur_list.evaluate() || "nil";
+				var result = cur_list.evaluate();
 				if (cur_list.parent) {
 					cur_list = cur_list.parent;
 					cur_list.splice(cur_list.length - 1);
-					cur_list.push(result);
+					cur_list.push(typeof result !== 'string' ? result : '"' + result + '"');
 				} else { // Base list
 					// console.log(base_list);
 					base_list = null;
@@ -288,7 +286,7 @@ RambutanList.prototype.evaluate = function() {
 	temp.parent = this.parent;
 	for (var x = 0, y = this.length; x < y; ++ x) {
 		if (!this[x] || typeof this[x] !== 'object') {
-			temp.push(this[x]);
+			temp.push(typeof this[x] !== 'string' ? this[x] : '"' + this[x] + '"');
 			continue;
 		}
 		temp.push(this[x].evaluate());
@@ -329,7 +327,7 @@ RambutanList.prototype.delayedEvaluate = function() {
 	// Evaluate children first
 	for (var x = 0, y = this.length; x < y; ++ x) {
 		if (!this[x] || typeof this[x] !== 'object') {
-			temp.push(this[x]);
+			temp.push(typeof this[x] !== 'string' ? this[x] : '"' + this[x] + '"');
 			continue;
 		}
 		temp.push(this[x].evaluate());
