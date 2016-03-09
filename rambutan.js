@@ -27,7 +27,7 @@ SOFTWARE.
 // Each instance of Rambutan serves as an independent LISP interpreter
 Rambutan = function() {
 	this.namespace = new Object();
-	this.delayed = ["let", "set"];
+	this.delayed = ["let", "set", "setq"];
 	// Define the defining function
 	var _this = this;
 	this.namespace.defun = function() {
@@ -37,9 +37,22 @@ Rambutan = function() {
 		});
 	}
 	// Define the GLOBAL variable setting function
-	// NOTE: This is not the same as set/setq in Common LISP,
-	// it acts like setf. Moreover, this is mimicking JS vars
 	this.namespace.set = function() {
+		var symbol = arguments[0];
+		if (symbol instanceof RambutanAtom ||
+			symbol instanceof RambutanList) {
+			symbol = symbol.delayedEvaluate();
+		}
+		if (symbol != null) symbol = symbol.toString();
+		var result = arguments[1];
+		if (arguments[1] instanceof RambutanList) {
+			result = arguments[1].delayedEvaluate();
+		}
+		_this.namespace[symbol] = result;
+		return result;
+	}
+	// Equivalent to (set (quote [symbol]) [value])
+	this.namespace.setq = function() {
 		var result = arguments[1];
 		if (arguments[1] instanceof RambutanList) { 
 			result = arguments[1].delayedEvaluate();
@@ -108,7 +121,8 @@ Rambutan.prototype.eval = function(code) {
 			if (char !== "(") continue;
 			cur_list = base_list = new RambutanList({
 				interpreter: this,
-				apostrophe: (x && code[x - 1] === "'")
+				apostrophe: (x && code[x - 1] === "'"),
+				backtick: (x && code[x - 1] === "`")
 			});
 			++ p_level;
 			continue;
@@ -133,7 +147,9 @@ Rambutan.prototype.eval = function(code) {
 				}
 				cur_list = new RambutanList({
 					parent: cur_list,
-					apostrophe: code[x - 1] === "'"
+					apostrophe: code[x - 1] === "'",
+					backtick: code[x - 1] === "`",
+					comma: code[x - 1] === ","
 				});
 				++ p_level;
 				continue;
@@ -198,6 +214,8 @@ RambutanList = function(json) {
 	this.interpreter = json.interpreter || this.parent.interpreter || null;
 	this.namespace = new Object();
 	if (json.apostrophe) this.apostrophe = true;
+	if (json.backtick) this.backtick = true;
+	if (json.comma) this.comma = true;
 	if (this.parent) this.parent.push(this);
 }
 
@@ -230,10 +248,22 @@ RambutanList.prototype.push = function(val) {
 					apostrophe = true;
 					val = val.substr(1);
 				}
+				var backtick = false;
+				if (val.length >= 2 && val[0] === "`") {
+					backtick = true;
+					val = val.substr(1);
+				}
+				var comma = false;
+				if (val.length >= 2 && val[0] === ",") {
+					comma = true;
+					val = val.substr(1);
+				}
 				val = new RambutanAtom({
 					symbol: val,
 					parent: this,
-					apostrophe: apostrophe
+					apostrophe: apostrophe,
+					backtick: backtick,
+					comma: comma
 				});
 				// Make sure certain special functions are evaluated properly
 				if (!this.length && this.interpreter.delayed.indexOf(val.symbol) !== -1) {
@@ -368,6 +398,42 @@ RambutanAtom.prototype.evaluate = function() {
 		if (!l.parent) break;
 	}
 	// console.log(f);
+	// Check the global namespace, if appropriate
+	if (f === undefined) f = this.interpreter.namespace[this.symbol];
+	if (typeof f === 'function') { // JS-Interop Function
+		return f.apply(this);
+	} else if (f instanceof RambutanFunction) { // LISP Function
+		return f.evaluate(this);
+	} else { // Variable
+		if (f !== undefined) { // Definitely a variable
+			return f;
+		} else { // I don't exist...
+			return null;
+		}
+	}
+}
+
+RambutanAtom.prototype.delayedEvaluate = function() {
+	var temp = new RambutanAtom({
+		symbol: this.symbol,
+		interpreter: this.interpreter
+	});
+	temp.parent = this.parent;
+	var delayedEvaluation = this.parent.delayedEvaluation;
+	this.parent.delayedEvaluation = false;
+	// If this is actually the name of a function, return self
+	if (this.parent && this.parent[0] == this) return temp;
+	// Check the local namespace(s)
+	var f;
+	for (var l = this; true; l = l.parent) {
+		if (f === undefined && l.namespace) f = l.namespace[this.symbol];
+		if (l.apostrophe || (l.delayedEvaluation && l !== this)) {
+			this.parent.delayedEvaluation = delayedEvaluation;
+			return temp;
+		}
+		if (!l.parent) break;
+	}
+	this.parent.delayedEvaluation = delayedEvaluation;
 	// Check the global namespace, if appropriate
 	if (f === undefined) f = this.interpreter.namespace[this.symbol];
 	if (typeof f === 'function') { // JS-Interop Function
