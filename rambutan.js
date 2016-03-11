@@ -395,7 +395,8 @@ RambutanList.prototype.delayedEvaluate = function() {
 RambutanList.prototype.toString = function() {
 	var temp = new Array();
 	for (var i = this.length; i --; ) {
-		temp[i] = typeof this[i] === 'string' ? '"' + this[i] + '"' : this[i].toString();
+		temp[i] = (typeof this[i] === 'string' ? '"' + this[i] + '"' :
+			this[i] ? this[i].toString() : this[i]);
 	}
 	return (this.apostrophe ? "'" : "") + "(" + temp.join(" ") + ")";
 }

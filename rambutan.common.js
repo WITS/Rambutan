@@ -64,7 +64,7 @@ LISP.defun("or", function() {
 });
 
 LISP.defun("not", function() {
-	return !arguments[0];
+	return !arguments[0] || null;
 });
 
 // Equality/inequality operators
