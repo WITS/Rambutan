@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Rambutan Editor</title>
+<link rel='stylesheet' href='style.css' />
+<script src='../rambutan.js'></script>
+<script src='../rambutan.common.js'></script>
+<script src='../rambutan.web.js'></script>
+<script src='ace/ace.js'></script>
+<script src='ace/mode-lisp.js'></script>
+<script src='ace/theme-twilight.js'></script>
+<script src='editor.js'></script>
+</head>
+<body>
+<div id='navbar'>
+	<div class='left'><a id='logo' href='#' onmouseup='location.reload();' title='Clear code'>Rambutan</a></div>
+	<div class='right'><div class='button' id='run' onmouseup='handle_run();' title='Run code'>Run</div></div>
+</div>
+<div id='editor'></div>
+<div id='output'></div>
+</body>
+</html>
