@@ -269,6 +269,8 @@ RambutanList.prototype.push = function(val) {
 				}
 			}
 		}
+	} else if (val && typeof val === 'object') {
+		val.parent = this;
 	}
 	Array.prototype.push.call(this, val);
 }
@@ -281,7 +283,10 @@ RambutanList.prototype.evaluate = function() {
 	if (!(a instanceof RambutanAtom)) return this;
 	// Evaluate children first
 	var temp = new RambutanList({
-		interpreter: this.interpreter
+		interpreter: this.interpreter,
+		apostrophe: this.apostrophe,
+		backtick: this.backtick,
+		comma: this.comma
 	});
 	temp.parent = this.parent;
 	for (var x = 0, y = this.length; x < y; ++ x) {
@@ -292,11 +297,23 @@ RambutanList.prototype.evaluate = function() {
 		temp.push(this[x].evaluate());
 	}
 	// Check the local namespace(s)
+	var backtick = false;
+	var comma = false;
 	for (var l = this; true; l = l.parent) {
 		if (f === undefined) f = l.namespace[a];
-		if (l.apostrophe) return this;
-		if (l.delayedEvaluation && l !== this) return this;
+		if (l.apostrophe) return temp;
+		backtick = backtick || l.backtick;
+		comma = comma || l.comma;
+		if (l.delayedEvaluation && l !== this) return temp;
 		if (!l.parent) break;
+	}
+	// Backtick / comma handling
+	if (temp.backtick) {
+		temp.backtick = false;
+		temp.apostrophe = true;
+		return temp;
+	} else if (backtick && !comma) {
+		return temp;
 	}
 	// Check the global namespace, if appropriate
 	if (!f) f = this.interpreter.namespace[a];
@@ -318,7 +335,10 @@ RambutanList.prototype.evaluate = function() {
 RambutanList.prototype.delayedEvaluate = function() {
 	if (!this.length) return null;
 	var temp = new RambutanList({
-		interpreter: this.interpreter
+		interpreter: this.interpreter,
+		apostrophe: this.apostrophe,
+		backtick: this.backtick,
+		comma: this.comma
 	});
 	temp.parent = this.parent;
 	var f;
@@ -338,10 +358,22 @@ RambutanList.prototype.delayedEvaluate = function() {
 	if (this.length === 1 && (a === null || typeof a !== 'object')) return a;
 	if (!(a instanceof RambutanAtom)) return temp;
 	// Check the local namespace(s)
+	var backtick = false;
+	var comma = false;
 	for (var l = temp; true; l = l.parent) {
 		if (f === undefined) f = l.namespace[a];
 		// if (l.apostrophe) return temp;
+		backtick = backtick || l.backtick;
+		comma = comma || l.comma;
 		if (!l.parent) break;
+	}
+	// Backtick / comma handling
+	if (temp.backtick) {
+		temp.backtick = false;
+		temp.apostrophe = true;
+		return temp;
+	} else if (backtick && !comma) {
+		return temp;
 	}
 	// Check the global namespace, if appropriate
 	if (!f) f = temp.interpreter.namespace[a];
@@ -385,23 +417,41 @@ RambutanAtom.prototype.backtick = false;
 RambutanAtom.prototype.comma = false;
 
 RambutanAtom.prototype.evaluate = function() {
+	var temp = new RambutanAtom({
+		symbol: this.symbol,
+		interpreter: this.interpreter,
+		apostrophe: this.apostrophe,
+		backtick: this.backtick,
+		comma: this.comma
+	});
+	temp.parent = this.parent;
 	// If this is actually the name of a function, return self
-	if (this.parent && this.parent[0] == this) return this;
+	if (this.parent && this.parent[0] == this) return temp;
 	// Check the local namespace(s)
 	var f;
+	var backtick = false;
+	var comma = false;
 	for (var l = this; true; l = l.parent) {
 		if (f === undefined && l.namespace) f = l.namespace[this.symbol];
-		if (l.apostrophe) return this;
-		if (l.delayedEvaluation && l !== this) return this;
+		if (l.apostrophe || (l.delayedEvaluation && l !== this)) return temp;
+		backtick = backtick || l.backtick;
+		comma = comma || l.comma;
 		if (!l.parent) break;
 	}
-	// console.log(f);
+	// Backtick / comma handling
+	if (temp.backtick) {
+		temp.backtick = false;
+		temp.apostrophe = true;
+		return temp;
+	} else if (backtick && !comma) {
+		return temp;
+	}
 	// Check the global namespace, if appropriate
 	if (f === undefined) f = this.interpreter.namespace[this.symbol];
 	if (typeof f === 'function') { // JS-Interop Function
-		return f.apply(this);
+		return f.apply(temp);
 	} else if (f instanceof RambutanFunction) { // LISP Function
-		return f.evaluate(this);
+		return f.evaluate(temp);
 	} else { // Variable
 		if (f !== undefined) { // Definitely a variable
 			return f;
@@ -414,7 +464,10 @@ RambutanAtom.prototype.evaluate = function() {
 RambutanAtom.prototype.delayedEvaluate = function() {
 	var temp = new RambutanAtom({
 		symbol: this.symbol,
-		interpreter: this.interpreter
+		interpreter: this.interpreter,
+		apostrophe: this.apostrophe,
+		backtick: this.backtick,
+		comma: this.comma
 	});
 	temp.parent = this.parent;
 	var delayedEvaluation = this.parent.delayedEvaluation;
@@ -423,21 +476,33 @@ RambutanAtom.prototype.delayedEvaluate = function() {
 	if (this.parent && this.parent[0] == this) return temp;
 	// Check the local namespace(s)
 	var f;
+	var backtick = false;
+	var comma = false;
 	for (var l = this; true; l = l.parent) {
 		if (f === undefined && l.namespace) f = l.namespace[this.symbol];
 		if (l.apostrophe || (l.delayedEvaluation && l !== this)) {
 			this.parent.delayedEvaluation = delayedEvaluation;
 			return temp;
 		}
+		backtick = backtick || l.backtick;
+		comma = comma || l.comma;
 		if (!l.parent) break;
 	}
 	this.parent.delayedEvaluation = delayedEvaluation;
+	// Backtick / comma handling
+	if (temp.backtick) {
+		temp.backtick = false;
+		temp.apostrophe = true;
+		return temp;
+	} else if (backtick && !comma) {
+		return temp;
+	}
 	// Check the global namespace, if appropriate
 	if (f === undefined) f = this.interpreter.namespace[this.symbol];
 	if (typeof f === 'function') { // JS-Interop Function
-		return f.apply(this);
+		return f.apply(temp);
 	} else if (f instanceof RambutanFunction) { // LISP Function
-		return f.evaluate(this);
+		return f.evaluate(temp);
 	} else { // Variable
 		if (f !== undefined) { // Definitely a variable
 			return f;
